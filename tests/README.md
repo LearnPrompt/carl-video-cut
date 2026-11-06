@@ -11,6 +11,14 @@ for b in bad_css bad_random bad_state; do cp -R tests/determinism/$b $F/$b; node
 cp -R templates/hyperframes $F/tpl; node scripts/check_determinism.mjs --dir $F/tpl --times 0.5,1.5,3.0,5.0
 ```
 
+## Chrome 启动与中途故障
+
+`tests/cdp/check_launch.mjs` 用假 Chrome（`tests/cdp/fake_chrome.mjs`）跑四种故障：马上退出、不给调试地址、连上后退出、连上后不回。每种都必须在时限内报 `DETERMINISM ERROR`、退出码 2，假 Chrome 和临时 profile 都要回收。之后用真 Chrome 跑正常路径，再跑一个 1 秒后死循环的页面（拿到页面之后才超时，进程退出时也必须把 Chrome 带走）；macOS 上再套一层 `sandbox-exec` 外层沙箱，要求要么通过、要么 30 秒内报错，最后在外层沙箱里显式设 `CVC_CHROME_FLAGS=--no-sandbox` 必须通过。`--no-real` 只跑假 Chrome。被测进程的 `TMPDIR` 指到测试自己的临时目录，回收检查不受机器上别的 Chrome 影响。
+
+```bash
+node tests/cdp/check_launch.mjs
+```
+
 ## 口播夹具（P1 源归一、P2 转写对位）
 
 `utterances.txt` 是测试句，不含私人内容。TTS 合成后拼成三段假录音，句界真值精确已知，录音里埋了半句口误、整句重录、稿外插话、长短停顿、句内重说，画面带 VFR、10bit HEVC、音画偏移和几种边界源（HLG、无色彩标签、旋转、疑似 Log）。
@@ -34,6 +42,12 @@ python3 tests/koubo_fixture/check_p2.py --truth $F/src/truth.json --timings $F/p
 ```bash
 bash tests/koubo_fixture/run_all.sh $F
 ```
+
+## 0.2.1 实跑（2026-11-07，macOS，Chrome 正式版，Node 25.6）
+
+- Chrome 启动与中途故障：`check_launch.mjs` 8 项全 PASS。假 Chrome 马上退出 0.3s、不给调试地址 10.1s、连上后退出 0.2s、连上后不回 5.3s（`CVC_CDP_TIMEOUT=3`），都是退出码 2，假进程和 profile 都回收了；真 Chrome 正常路径通过，页面死循环 4.1s 报错且没有留下 Chrome 进程；外层 `sandbox-exec` 里 1.9s 报 `Chrome 退出（SIGTRAP）`，输出里有 `sandbox initialization failed: Operation not permitted`；同一外层沙箱里显式 `CVC_CHROME_FLAGS=--no-sandbox` 通过。修之前，连上后退出、连上后不回、外层沙箱三种都一直等到被外部超时杀掉，不给调试地址那种报错后留下 Chrome 进程。
+- 确定性：bad_css、bad_random、bad_state 仍是 FAIL 3/3、退出码 1；hyperframes 模板和 selfrender 模板 PASS、退出码 0。
+- 口播全链路不经过 Chrome 驱动，这次没改；它在 0.2.0（同一天）上跑过一遍 ALL DONE：P2 平均误差 8ms、最大 61ms，lint 0 error。
 
 ## 最近一次实跑（2026-10-27，macOS，whisper ggml-small）
 
