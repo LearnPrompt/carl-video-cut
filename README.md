@@ -22,7 +22,7 @@ npx skills add LearnPrompt/carl-video-cut -a claude-code -g
 
 ### 依赖
 
-只在 macOS 上验证过（ffmpeg 8.1.1、whisper.cpp 1.9.5、Swift 6.4、Node 25.6、Python 3.9.6）。要求 Node 22 起、Python 3.9 起，还要装好 Google Chrome。口播片型离不开 macOS：人脸检测和繁简转换用的是系统自带的 Vision 和 ICU。其他片型理论上能在别的系统跑，没测过；确定性检查默认找 macOS 的 Chrome，装在别处时设 `CVC_CHROME=<Chrome 可执行文件>`。
+只在 macOS 上验证过（ffmpeg 8.1.1、whisper.cpp 1.9.5、Swift 6.4、Node 25.6、Python 3.9.6）。要求 Node 22 起、Python 3.9 起，还要装好 Google Chrome。口播片型离不开 macOS：人脸检测和繁简转换用的是系统自带的 Vision 和 ICU。其他片型理论上能在别的系统跑，没测过；确定性检查默认找 macOS 的 Chrome，装在别处时设 `CVC_CHROME=<Chrome 可执行文件>`；在别的沙箱里跑时 Chrome 可能起不来，检查会在几秒内报错退出，处理办法见 [references/qa.md](references/qa.md)。
 
 ```bash
 xcode-select --install                     # swift
@@ -50,7 +50,7 @@ Subtitles are not burned in; use your own captioning tool on the final video. Us
 
 ### Requirements
 
-Verified on macOS only (ffmpeg 8.1.1, whisper.cpp 1.9.5, Swift 6.4, Node 25.6, Python 3.9.6). Requires Node 22+, Python 3.9+ and Google Chrome. The talking-head format needs macOS: face detection and Traditional-to-Simplified conversion use the built-in Vision and ICU. Other formats may work elsewhere but are untested; the determinism check looks for macOS Chrome by default, set `CVC_CHROME=<chrome binary>` otherwise. Install commands are in the Chinese section above.
+Verified on macOS only (ffmpeg 8.1.1, whisper.cpp 1.9.5, Swift 6.4, Node 25.6, Python 3.9.6). Requires Node 22+, Python 3.9+ and Google Chrome. The talking-head format needs macOS: face detection and Traditional-to-Simplified conversion use the built-in Vision and ICU. Other formats may work elsewhere but are untested; the determinism check looks for macOS Chrome by default, set `CVC_CHROME=<chrome binary>` otherwise. Inside another sandbox Chrome may fail to start; the check then exits with an error within seconds, see [references/qa.md](references/qa.md). Install commands are in the Chinese section above.
 
 Transcription runs fully locally with no paid API. HyperFrames is downloaded from npm only with your consent. Explainers need manim 0.21 and edge-tts (which calls Microsoft's online TTS service). Running the tests also needs uv.
 

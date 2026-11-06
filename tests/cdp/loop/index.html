@@ -1,0 +1,8 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- 1 秒以后的帧死循环：检查在单条调用超时后必须报错退出，并回收这次启动的 Chrome -->
+<body style="margin:0;background:#222"></body>
+<script>
+  window.MOTION_TOTAL = 2;
+  window.__render = t => { document.body.style.background = t < 1 ? '#222' : '#444'; if (t >= 1) for (;;) {} };
+</script>

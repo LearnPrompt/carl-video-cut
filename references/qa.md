@@ -48,6 +48,8 @@ node ~/.claude/skills/carl-video-cut/scripts/check_determinism.mjs --dir <工程
 
 两次全新加载页面，一次按顺序直接 seek，一次打乱顺序且每个时刻前先跳到别处再回来，逐像素比。能抓到没带种子的随机数、Date.now、CSS 动画、计时器、依赖上一帧的累加。结果分三档：逐像素一致；栅格噪声（最大差不超过 2 个色阶，是 Chrome 按历史复用字形栅格造成的文字抗锯齿微差，和页面内容无关，算通过但要单列）；真不同（失败，差异图在 `_determinism/`）。`--strict` 时任何差异都算失败。口播片型只对动效叠层工程跑，不对真人底片跑。
 
+检查本身跑不起来时（找不到 Chrome、10 秒内没给出调试地址、Chrome 中途退出、单条调用超过 60 秒）打印 `DETERMINISM ERROR` 并以退出码 2 结束，不会挂住，也不算通过。这时先看报错里 Chrome 最后几行输出。Chrome 不在默认位置时设 `CVC_CHROME`。在别的沙箱里跑（比如 Agent 框架的 seatbelt），Chrome 自带沙箱可能起不来，输出里会有 `sandbox initialization failed`；确认外层已经隔离、打开的是自己的工程后，再显式设 `CVC_CHROME_FLAGS=--no-sandbox`。这个开关会关掉 Chrome 自己的沙箱，默认不加，别的场合不要用。页面很重、加载超过一分钟时，用 `CVC_CDP_TIMEOUT=<秒>` 放宽单条调用时限。
+
 **响度**：有音轨的片子，BGM 和音效分轨交给 `mix_audio.py` 混（BGM 按人声侧链让路），再两遍 loudnorm，口径统一 I -14 LUFS、真峰值不超过 -1.2 dBTP，在 AAC 编码之前做。`export_1080p.sh` 遇到有音轨的输入会自动做这一步，AAC 编码后实测真峰值，上冲超标就收紧目标重做。验收以 probe 的 ebur128 实测值为准。
 
 **卡拍回测**（只对配乐驱动切点的片型；口播片型只回测落在 BGM 重音上的叠层动作）：

@@ -26,6 +26,8 @@ const DIR = resolve(arg('dir')), W = +arg('width', 1920), H = +arg('height', 108
 const TRANSPARENT = argv.includes('--transparent'), STRICT = argv.includes('--strict');
 const OUT = resolve(arg('out', join(DIR, '_determinism')));
 
+// Chrome 起不来、超时、中途退出：报错，退出码 2，和「检查不通过」的 1 分开
+process.on('uncaughtException', e => { console.error(`DETERMINISM ERROR：${e.message}`); process.exit(2); });
 const p1 = await openPage({ dir: DIR, width: W, height: H, transparent: TRANSPARENT });
 const dur = +(arg('duration') ?? p1.duration);
 if (!(dur > 0)) { console.error('无法确定时长：传 --duration 或让页面设置 window.MOTION_TOTAL / window.__duration'); await p1.close(); process.exit(2); }
