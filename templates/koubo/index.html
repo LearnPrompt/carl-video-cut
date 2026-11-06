@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=1080">
+<title>口播大剪辑</title>
+<link rel="icon" href="data:,">
+<style>
+  /* 口播大剪辑模板。设计规范：单强调色 / 0px 圆角 / 1px 线 / Swiss grid（边距 96）/ 无渐变无发光。
+     颜色字体全部来自 MOTION.theme；版式坐标集中在脚本里的 BOX 常量；文字、素材、时刻只来自 motion.config.js 和 timing.js。
+     字号下限按手机看 1080p：正文 36，标签 26 以上。 */
+  * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+  body { font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; line-break: strict; }
+  #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+  .layer { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+  #bg { background: var(--paper); overflow: hidden; }
+  #bg .row { position: absolute; left: 0; white-space: nowrap; }
+  #bg .w { display: inline-block; font-family: system-ui, -apple-system, "Helvetica Neue", sans-serif; font-weight: 900; line-height: 1; vertical-align: top; }
+  #bg .w.s { color: var(--word); letter-spacing: -.02em; }
+  #bg .w.o { color: transparent; font-style: italic; letter-spacing: -.01em; -webkit-text-stroke: var(--stroke) var(--word); }
+  #carlwin { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; z-index: 5; }
+  #carlframe { position: absolute; left: 0; top: 0; z-index: 6; outline: 1px solid var(--ink); pointer-events: none; }
+  #v-carl { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+  #scenes { z-index: 10; pointer-events: none; }
+  #chrome { z-index: 20; pointer-events: none; }
+  #kin { z-index: 30; pointer-events: none; }
+
+  /* 概念文字动画（伪 AE 层）：逐字弹入、橙色底块擦过重点词、划线、整屏色块转场。只用 2D，origin 搭建时设好 */
+  .ch { display: inline-block; }
+  .hlw { position: relative; z-index: 0; isolation: isolate; display: inline-block; color: #fff; }
+  .hlw > i.blk { position: absolute; left: -.06em; right: -.06em; top: .1em; bottom: .02em; background: var(--accent); z-index: -1; }
+  .stk { position: relative; display: inline-block; }
+  .stk > i.ln { position: absolute; left: -.04em; right: -.04em; top: 52%; height: .09em; background: var(--accent); }
+  .k-ov { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; }
+  .k-body { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: var(--bg); display: flex; align-items: center; }
+  .k-card { margin: 0 96px; }
+  .k-text { font: 700 112px/1.2 var(--font); letter-spacing: -.01em; color: var(--ink); }
+  .k-kick { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; font: 600 34px/1 var(--mono); letter-spacing: .04em; color: var(--accent); }
+  .k-kick::before { content: ""; width: 16px; height: 16px; background: var(--accent); }
+  .k-bar { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: var(--accent); }
+  .k-side { position: absolute; left: 96px; top: 0; height: 1080px; display: flex; flex-direction: column; justify-content: center; }
+  .k-sline { position: relative; z-index: 0; isolation: isolate; width: fit-content; margin-bottom: 12px; padding: 6px 20px 10px; font: 700 84px/1.18 var(--font); color: var(--ink); white-space: nowrap; }
+  .k-sline > i.bk { position: absolute; left: 0; top: 0; right: 0; bottom: 0; background: rgba(14,15,18,.92); z-index: -1; }
+  .k-numwrap { overflow: hidden; margin-bottom: 6px; }
+  .k-num { font: 800 300px/.9 system-ui, -apple-system, "Helvetica Neue", sans-serif; letter-spacing: -.04em; color: var(--accent); }
+  .k-side .k-kick { width: fit-content; margin-bottom: 12px; padding: 10px 16px; background: rgba(14,15,18,.92); font-size: 30px; }
+  #stash { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: hidden; }
+  .scene { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+
+  .card { position: absolute; overflow: hidden; background: var(--bg); outline: 1px solid var(--ink); }
+  .card video, .card img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .card.contain video, .card.contain img { object-fit: contain; }
+  .credit { position: absolute; font: 500 24px/1 var(--mono); color: var(--ink); opacity: .75; letter-spacing: .02em; white-space: nowrap; }
+  .credit.in { padding: 8px 14px; background: rgba(14,15,18,.86); opacity: 1; }
+  .demo { position: absolute; left: 0; top: 0; padding: 8px 14px; background: var(--accent); font: 600 26px/1 var(--font); color: #fff; }
+  .tag .dm { margin-left: 4px; padding: 4px 10px; background: var(--accent); font-size: 24px; color: #fff; }
+
+  .kicker { display: flex; align-items: center; gap: 14px; width: fit-content; padding: 7px 14px 7px 12px; background: rgba(14,15,18,.86); font: 600 28px/1.2 var(--font); letter-spacing: .02em; color: var(--accent); }
+  .kicker::before { content: ""; flex: none; width: 14px; height: 14px; background: var(--accent); }
+  .title { font: 700 52px/1.22 var(--font); letter-spacing: -.01em; color: var(--ink); white-space: pre-line; text-wrap: balance; }
+  .sub { font: 400 36px/1.4 var(--font); color: var(--ink); opacity: .86; white-space: pre-line; }
+  .note { font: 500 24px/1.45 var(--mono); color: var(--ink); opacity: .78; white-space: pre; }
+  .mask { display: block; overflow: hidden; }
+  .mask > * { display: block; }
+  .col { position: absolute; display: flex; flex-direction: column; gap: 14px; padding: 18px 16px 20px; background: rgba(14,15,18,.82); }
+  .col .kicker { padding: 0; background: none; }
+
+  .chips { position: absolute; display: flex; flex-wrap: wrap; gap: 14px 16px; }
+  .chip { position: relative; padding: 10px 18px; border: 1px solid var(--ink); font: 500 36px/1.15 var(--font); color: var(--ink); white-space: nowrap; background: rgba(14,15,18,.8); }
+  .chip .hl { position: absolute; inset: -1px; background: var(--accent); transform-origin: 0 50%; z-index: 0; }
+  .chip span { position: relative; z-index: 1; }
+  .chip .x { position: absolute; left: 12px; right: 12px; top: 52%; height: 4px; background: var(--accent); transform-origin: 0 50%; z-index: 2; }
+  .arrow { align-self: center; font: 500 36px/1 var(--mono); color: var(--ink); opacity: .7; }
+
+  .panel { position: absolute; padding: 24px 32px 28px; background: rgba(14,15,18,.9); outline: 1px solid rgba(237,234,228,.28); display: flex; flex-direction: column; gap: 14px; }
+  .panel .title { font-size: 60px; }
+  .panel .kicker { padding: 0; background: none; }
+  .panel .chips { position: static; margin-top: 6px; }
+  .tag { position: absolute; left: 96px; top: 52px; display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: rgba(14,15,18,.86); font: 600 26px/1 var(--font); letter-spacing: .04em; color: var(--ink); white-space: nowrap; }
+  .tag::before { content: ""; width: 12px; height: 12px; background: var(--accent); }
+  .tag.lab { font-size: 30px; letter-spacing: 0; }
+
+  .biglabel { position: absolute; left: 96px; bottom: 96px; display: flex; flex-direction: column; gap: 12px; padding: 20px 28px 24px; background: rgba(14,15,18,.88); }
+  .biglabel .kicker { padding: 0; background: none; }
+  .biglabel .title { font-size: 72px; }
+
+  .quote { position: relative; overflow: hidden; padding: 44px 52px; background: var(--bg); outline: 1px solid var(--ink); font: 500 40px/1.65 var(--mono); color: var(--ink); white-space: pre-wrap; word-break: break-all; }
+  .quote .q-k { display: flex; margin-bottom: 26px; padding: 0; background: none; }
+  .qline { position: absolute; display: flex; flex-direction: column; gap: 12px; padding: 16px 20px; background: var(--bg); outline: 1px solid var(--ink); font: 500 32px/1.45 var(--mono); color: var(--ink); }
+  .qline .kicker { padding: 0; background: none; }
+  .qline > div { white-space: pre-wrap; }
+  .qline .cur, .quote .cur { display: inline-block; width: .55em; height: 1em; vertical-align: -.12em; background: var(--accent); }
+
+  .tl { position: absolute; height: 128px; }
+  .tl .strip { position: absolute; left: -16px; right: -16px; top: -44px; bottom: -8px; background: rgba(14,15,18,.86); }
+  .tl .rule { position: absolute; left: 0; right: 0; top: 60px; height: 1px; background: var(--ink); }
+  .tl .tick { position: absolute; top: 44px; width: 1px; height: 32px; background: var(--ink); opacity: .7; }
+  .tl .tlab { position: absolute; top: 88px; transform: translateX(-50%); font: 500 26px/1 var(--mono); color: var(--ink); opacity: .85; white-space: nowrap; }
+  .tl .head { position: absolute; top: 20px; left: 0; width: 3px; height: 80px; margin-left: -1px; background: var(--accent); }
+  .tl .read { position: absolute; top: -32px; left: 0; font: 700 36px/1 var(--mono); color: var(--accent); white-space: nowrap; }
+  .tl .ev { position: absolute; top: -10px; transform: translateX(-50%); padding: 8px 14px; background: var(--accent); color: #fff; font: 600 30px/1 var(--font); white-space: nowrap; }
+  .tl .demo { left: auto; right: 0; top: -40px; }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="TOTAL">
+  <div id="bg" class="layer"></div>
+  <div id="carlwin"></div>
+  <div id="carlframe"></div>
+  <div id="scenes" class="layer"></div>
+  <div id="chrome" class="layer"></div>
+  <div id="kin" class="layer"></div>
+  <div id="stash">
+  <!--MEDIA-->
+  </div>
+</div>
+
+<script src="motion.config.js"></script>
+<script src="timing.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+(function () {
+  // 约束：画面只由 t 决定。不用 Date.now / performance.now / 无种子 Math.random / CSS 动画；所有变化都挂在一条暂停的 GSAP 时间线上。
+  var M = window.MOTION, T = window.MOTION_T, TH = M.theme, P = M.brand.pattern;
+  var W = 1920, H = 1080;
+  var rs = document.documentElement.style;
+  [['--bg', TH.bg], ['--paper', P.bg], ['--word', P.word], ['--ink', TH.ink], ['--accent', TH.accent],
+   ['--font', TH.font], ['--mono', TH.mono], ['--stroke', P.stroke + 'px']].forEach(function (kv) { rs.setProperty(kv[0], kv[1]); });
+
+  // 版式坐标（1080p）。pip：卡片区和右栏之间留 96，卡片上沿留出条目名和署名的一行
+  var BOX = {
+    pip:   { card: [96, 176, 1200, 669], col: [1392, 176, 432], win: [1392, 452, 432, 393], chipsY: 884 },
+    split: { card: [96, 260, 1056, 594], head: [96, 120], strip: [1200, 0, 720, 1080], chipsGap: 32 },
+    side:  { x: 96, cy: 540, maxW: 760, minW: 420, maxH: 560, faceGap: 72 },
+    grid:  { top: 264, quoteTop: 420, gap: 24 },
+    full:  { pad: 96, maxW: 0.55 },
+    talk:  { x: 64, bottom: 64 },
+  };
+  var CROP = 700;                                   // 小窗里取脸周围多大一块原画面（px），大一点给晃动留余量
+
+  function mk(tag, cls, parent, text) {
+    var e = document.createElement(tag); if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    if (parent) parent.appendChild(e); return e;
+  }
+  function px(e, x, y, w, h) { e.style.left = x + 'px'; e.style.top = y + 'px'; if (w != null) e.style.width = w + 'px'; if (h != null) e.style.height = h + 'px'; }
+  function fit(aw, ah, bw, bh) { var r = Math.min(bw / aw, bh / ah); return [Math.round(aw * r), Math.round(ah * r)]; }
+  var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
+
+  // 只用 2D transform：真 3D（rotationY + perspective）在 Chrome 里走合成层，入场中途的帧截图会随页面加载时机变，确定性检查过不了
+  // （GSAP 数值逐项一致、截图不一致，2026-10-22 实测）。force3D:false 让 GSAP 补间中也写 2D 的 translate，不提升合成层。
+  // lazy:false：补间第一次被 seek 到时当场写值，不拖到下一个 tick。
+  gsap.config({ force3D: false });
+  var tl = gsap.timeline({ paused: true, defaults: { lazy: false } });
+  var E = { out: 'power3.out', io: 'power2.inOut' };
+  var show = function (el, t0, t1) {                // 在 [t0, t1) 内可见；用零时长 set，前后 seek 都可逆
+    tl.set(el, { autoAlpha: 1 }, t0);
+    if (t1 != null && t1 < T.duration) tl.set(el, { autoAlpha: 0 }, t1);
+  };
+  // transformOrigin 一律在搭建时一次设好，不写进补间：补间里带的 origin 往回 seek 时会被还原成默认值、再往前不会重设，
+  // 同一时刻的画面就随 seek 历史变（确定性检查实测，入场途中的帧错位）。
+  var origin = function (el, o) { gsap.set(el, { transformOrigin: o }); };
+  // 仿 3D 入场的 2D 版：卡片从左沿收着推进来（横向先窄、略矮，左沿为轴放开）
+  var enter = function (el, at, extra) {
+    origin(el, '0% 50%');
+    tl.fromTo(el, Object.assign({ x: -28, scaleX: 0.9, scaleY: 0.96 }, extra && extra.from),
+      Object.assign({ x: 0, scaleX: 1, scaleY: 1, duration: 0.6, ease: E.out, immediateRender: false }, extra && extra.to), at);
+  };
+  var fadeUp = function (el, at, d) { tl.fromTo(el, { autoAlpha: 0, y: 18 }, { autoAlpha: 1, y: 0, duration: d || 0.4, ease: E.out }, at); };
+  var maskUp = function (el, at, d) { tl.fromTo(el, { yPercent: 105 }, { yPercent: 0, duration: d || 0.45, ease: E.out }, at); };
+
+  // ---------- 品牌底：重复字漂移（位移对单元宽取模，任意 t 无缝） ----------
+  (function brand() {
+    var bg = document.getElementById('bg'), D = M.brand.drift;
+    var probe = function (cls, text) {
+      var e = mk('span', 'w ' + cls, bg, text); e.style.fontSize = P.size + 'px'; e.style.position = 'absolute'; e.style.visibility = 'hidden';
+      var w = e.getBoundingClientRect().width; bg.removeChild(e); return w;
+    };
+    var gapPx = P.gap * P.size, wS = probe('s', P.solid), wO = probe('o', P.outline), U = wS + wO + 2 * gapPx;
+    var speed = U / D.loop, nRows = Math.ceil(H / P.rowH) + 1, reps = Math.ceil(W / U) + 2;
+    var top0 = (H - (nRows - 1) * P.rowH - P.size) / 2;
+    for (var i = 0; i < nRows; i++) {
+      var r = mk('div', 'row', bg); r.style.top = (top0 + i * P.rowH) + 'px';
+      for (var k = 0; k < reps; k++) {
+        var s = mk('span', 'w s', r, P.solid); s.style.fontSize = P.size + 'px'; s.style.width = (wS + gapPx) + 'px';
+        var o = mk('span', 'w o', r, P.outline); o.style.fontSize = P.size + 'px'; o.style.width = (wO + gapPx) + 'px';
+      }
+      var base = (i % 2) ? (wS + gapPx) : 0, dir = (i % 2) ? 1 : -1;
+      (function (base, dir) {
+        tl.fromTo(r, { x: 0 }, { x: 1, duration: T.duration, ease: 'none', immediateRender: true,
+          modifiers: { x: function (v) { var t = parseFloat(v) * T.duration; var m = ((base + dir * speed * t) % U + U) % U; return (m - U).toFixed(2) + 'px'; } } }, 0);
+      })(base, dir);
+    }
+  })();
+
+  // ---------- 真人：一个视频元素，按场景换位置和裁切 ----------
+  var win = document.getElementById('carlwin'), carl = document.getElementById('v-carl'), frame = document.getElementById('carlframe');
+  win.appendChild(carl);
+  gsap.set([win, frame], { transformOrigin: '50% 50%' });
+  var prevMode = null;
+  function carlAt(t0, rect, face, mode) {
+    var x = rect[0], y = rect[1], w = rect[2], h = rect[3], s = 1, vx = 0, vy = 0;
+    if (mode === 'win') {                            // 小窗：取脸周围 CROP 宽的一块，缩到窗口大小，脸略偏上
+      s = w / CROP;
+      var ch = h / s, fx = face.cx * W, fy = face.cy * H;
+      vx = -clamp(fx - CROP / 2, 0, W - CROP) * s; vy = -clamp(fy - ch * 0.48, 0, H - ch) * s;
+    } else if (mode === 'strip') {                   // 竖条：原大小，按脸水平居中
+      vx = -clamp(face.cx * W - w / 2, 0, W - w);
+    }
+    tl.set(win, { x: x, y: y, width: w, height: h, autoAlpha: mode === 'hide' ? 0 : 1 }, t0);
+    tl.set(carl, { x: vx, y: vy, scale: s }, t0);
+    tl.set(frame, { x: x, y: y, width: w, height: h, autoAlpha: mode === 'win' || mode === 'strip' ? 1 : 0 }, t0);
+    if (mode === 'win' && prevMode !== 'win')       // 从别的版式切进小窗时，小窗淡入并轻轻放大一次
+      tl.fromTo([win, frame], { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.4, ease: E.out, immediateRender: false }, t0);
+    prevMode = mode;
+  }
+
+  // ---------- 通用部件 ----------
+  function mediaEl(sc, j) {
+    var it = sc.items[j], md = T.media[it.m];
+    if (!md) return mk('div');
+    if (md.img) { var im = mk('img'); im.src = md.src; return im; }
+    return document.getElementById('v-' + sc.id + '-' + j);
+  }
+  function byOf(it, c) { return c.by || (M.media[it.m] || {}).by; }
+  function zoomMedia(el, it, c) {                    // 条目 zoom: {x, y, s, to}：以 (x, y) 为中心放大 s 倍，可在条目时长内慢慢推到 to
+    var z = c.zoom; if (!z) return;
+    var o = (z.x * 100) + '% ' + (z.y * 100) + '%';
+    origin(el, o);
+    if (z.to) tl.fromTo(el, { scale: z.s }, { scale: z.to, duration: it.t1 - it.t0, ease: 'none', immediateRender: true }, it.t0);
+    else gsap.set(el, { scale: z.s });
+  }
+  // 一组素材依次出现在同一个卡位。卡框比例取这一场素材比例的中位数，比例不同的条目在框里 contain，同一场里卡框不跳；
+  // 第一条带仿 3D 入场（右沿往里收，不会冲出卡位），后面的条目短滑入。条目名放卡框上沿外左侧，署名放上沿外右侧，不压素材。
+  function cards(layer, sc, cfg, box, align, opts) {
+    opts = opts || {};
+    var ars = sc.items.map(function (it) { var m = T.media[it.m]; return m ? m.w / m.h : 16 / 9; }).sort(function (a, b) { return a - b; });
+    var ar = ars.length ? ars[Math.floor((ars.length - 1) / 2)] : 16 / 9;
+    var md0 = { w: ar * 1000, h: 1000 }, sz = fit(md0.w, md0.h, box[2], box[3]);
+    var x = box[0], y = box[1];
+    if (align === 'center') { x = box[0] + (box[2] - sz[0]) / 2; y = box[1] + (box[3] - sz[1]) / 2; }
+    else if (align === 'left-mid') { y = box[1] + (box[3] - sz[1]) / 2; }
+    else if (align === 'top-center') { x = box[0] + (box[2] - sz[0]) / 2; }
+    return sc.items.map(function (it, j) {
+      var c = cfg.items[j] || {}, md = T.media[it.m] || md0;
+      var same = Math.abs(md.w / md.h - md0.w / md0.h) < 0.02;
+      var card = mk('div', 'card' + (same ? '' : ' contain'), layer); px(card, x, y, sz[0], sz[1]);
+      var el = mediaEl(sc, j); card.appendChild(el); zoomMedia(el, it, c);
+      var demo = c.demo || (M.media[it.m] || {}).demo;
+      gsap.set(card, { autoAlpha: 0 }); show(card, it.t0, it.t1);
+      if (j === 0) enter(card, it.t0);
+      else tl.fromTo(card, { x: 36 }, { x: 0, duration: 0.3, ease: E.out, immediateRender: false }, it.t0);
+      // 标注位置：默认卡片上沿外；opts.under 时放下沿外，卡片右边留得出 320 就改放右侧、和卡片底对齐
+      var lab = c.label, by = byOf(it, c), beside = opts.under && box[0] + box[2] - (x + sz[0]) >= 320;
+      var place = opts.under && !beside ? y + sz[1] + 14 : null, stack = lab && sz[0] < 640;   // 窄卡片署名另起一行，不和条目名挤
+      if (lab || demo) {                             // 示意标记挂在条目名后面，同在卡片外
+        var b = mk('div', 'tag lab', layer, lab || null); if (demo) mk('span', 'dm', b, '示意');
+        if (beside) { b.style.left = (x + sz[0] + 24) + 'px'; b.style.top = (y + sz[1] - 108) + 'px'; }
+        else { b.style.left = x + 'px'; b.style.top = (place != null ? place : y - 58) + 'px'; }
+        gsap.set(b, { autoAlpha: 0 }); show(b, it.t0, it.t1);
+      }
+      if (by) {
+        var cr = mk('div', 'credit' + (opts.creditIn ? ' in' : ''), layer, by);
+        if (beside) { cr.style.left = (x + sz[0] + 24) + 'px'; cr.style.top = (y + sz[1] - 30) + 'px'; }
+        else { cr.style.left = x + 'px'; cr.style.width = sz[0] + 'px'; cr.style.textAlign = 'right'; cr.style.top = (place != null ? place + (stack ? 62 : 12) : y - 36) + 'px'; }
+        gsap.set(cr, { autoAlpha: 0 }); show(cr, it.t0, it.t1);
+      }
+      return { el: card, x: x, y: y, w: sz[0], h: sz[1], it: it, under: place != null, stack: stack };
+    });
+  }
+  function chipsRow(parent, sc, cfg, x, y, maxW, at0) {
+    if (!sc.chips.length) return null;
+    var row = mk('div', 'chips', parent); px(row, x, y, maxW);
+    sc.chips.forEach(function (c, j) {
+      var cc = cfg.chips[j];
+      if (cc.arrow && j > 0) { var a = mk('div', 'arrow', row, '→'); fadeUp(a, cc.hidden && c.t != null ? c.t - 0.05 : at0, 0.3); }
+      var chip = mk('div', 'chip', row), hl = mk('i', 'hl', chip), sp = mk('span', '', chip, cc.text);
+      gsap.set(hl, { scaleX: 0 });
+      var appear = cc.hidden && c.t != null ? c.t - 0.05 : at0 + 0.06 * j;
+      fadeUp(chip, appear, 0.3);
+      if (c.t != null) {
+        if (cc.kind === 'ng') {                       // 反例：字变暗，橙线划掉
+          var x_ = mk('i', 'x', chip); gsap.set(x_, { scaleX: 0 });
+          tl.fromTo(x_, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: E.out, immediateRender: false }, c.t + 0.05);
+          tl.fromTo(sp, { opacity: 1 }, { opacity: 0.6, duration: 0.3, immediateRender: false }, c.t + 0.05);
+        } else if (!cc.plain) {
+          tl.fromTo(hl, { scaleX: 0 }, { scaleX: 1, duration: 0.28, ease: E.out, immediateRender: false }, c.t);
+          tl.fromTo(chip, { scale: 1.06 }, { scale: 1, duration: 0.4, ease: E.out, immediateRender: false }, c.t);
+        }
+      }
+    });
+    return row;
+  }
+  function textCol(parent, cfg, x, y, w, at) {
+    if (!(cfg.kicker || cfg.title || cfg.sub || cfg.note)) return null;
+    var col = mk('div', 'col', parent); px(col, x, y, w);
+    fadeUp(col, at, 0.3);
+    if (cfg.kicker) mk('div', 'kicker', col, cfg.kicker);
+    if (cfg.title) { var tt = mk('div', 'title', col); if (cfg.titleSize) tt.style.fontSize = cfg.titleSize + 'px'; charsIn(splitInto(tt, cfg.title, cfg.hl), at + 0.08); }
+    if (cfg.sub) fadeUp(mk('div', 'sub', col, cfg.sub), at + 0.2, 0.4);
+    if (cfg.note) fadeUp(mk('div', 'note', col, cfg.note), at + 0.3, 0.4);
+    return col;
+  }
+  function head(layer, cfg, x, y, w, at) {           // 标题行：kicker 在上，标题在下（和右栏同一种层级）
+    if (!(cfg.kicker || cfg.title)) return;
+    var h = mk('div', '', layer); px(h, x, y, w); h.style.position = 'absolute';
+    h.style.display = 'flex'; h.style.flexDirection = 'column'; h.style.gap = '12px'; h.style.alignItems = 'flex-start';
+    if (cfg.kicker) fadeUp(mk('div', 'kicker', h, cfg.kicker), at);
+    if (cfg.title) { var tt = mk('div', 'title', h); tt.style.padding = '0 12px'; tt.style.background = 'rgba(14,15,18,.82)'; charsIn(splitInto(tt, cfg.title, cfg.hl), at + 0.1); }
+  }
+  function typed(parent, cls, cfg, text, at, dur) {  // 等宽字逐字出现，光标跟在最后
+    var line = mk('div', '', parent), sp = Array.from(text).map(function (ch) { return mk('span', '', line, ch); }); mk('span', 'cur', line);
+    tl.fromTo(sp, { display: 'none' }, { display: 'inline', duration: 0.001, stagger: dur / sp.length, immediateRender: true }, at);
+    return line;
+  }
+  function quoteLine(layer, sc, cfg, x, y, w) {
+    var ql = mk('div', 'qline', layer); px(ql, x, y, w);
+    if (cfg.qkicker) mk('span', 'kicker', ql, cfg.qkicker);
+    var at = sc.qat != null ? sc.qat : sc.t0 + 0.5;
+    fadeUp(ql, at - 0.1, 0.3);
+    typed(ql, '', cfg, cfg.quote, at, cfg.type || 1.5);
+    return ql;
+  }
+
+  // ---------- 概念文字动画（伪 AE 层） ----------
+  var TOK = /[A-Za-z0-9.+#@_\-]+|\s+|[\s\S]/g;      // 英文词和数字整体一格，折行不会切在词中间
+  function splitInto(host, text, hl, stk) {          // 一段字拆成逐字 span；hl 里的词垫橙色底块，stk 里的词等着划线
+    var r = { chars: [], blks: [], stks: [] }, marks = [];
+    (hl || []).forEach(function (w) { var i = text.indexOf(w); if (i >= 0) marks.push([i, i + w.length, 'hl']); });
+    (stk || []).forEach(function (w) { var i = text.indexOf(w); if (i >= 0) marks.push([i, i + w.length, 'stk']); });
+    marks.sort(function (a, b) { return a[0] - b[0]; });
+    var emit = function (seg, el) {
+      (seg.match(TOK) || []).forEach(function (tok) {
+        if (/^\s+$/.test(tok)) el.appendChild(tok.indexOf('\n') >= 0 ? document.createElement('br') : document.createTextNode(tok));
+        else r.chars.push(mk('span', 'ch', el, tok));
+      });
+    };
+    var pos = 0;
+    marks.forEach(function (m) {
+      if (m[0] < pos) return;
+      emit(text.slice(pos, m[0]), host);
+      var w = mk('span', m[2] === 'hl' ? 'hlw' : 'stk', host);
+      if (m[2] === 'hl') { var b = mk('i', 'blk', w); origin(b, '0% 50%'); r.blks.push(b); }
+      emit(text.slice(m[0], m[1]), w);
+      if (m[2] === 'stk') { var ln = mk('i', 'ln', w); origin(ln, '0% 50%'); r.stks.push({ ln: ln, w: w }); }
+      pos = m[1];
+    });
+    emit(text.slice(pos), host);
+    return r;
+  }
+  function charsIn(r, at, d) {                       // 逐字从下方弹进来，字齐了重点词的橙色底块再擦过去
+    var n = r.chars.length, st = Math.min(0.035, 0.5 / Math.max(n, 1));
+    if (n) tl.fromTo(r.chars, { yPercent: 60, autoAlpha: 0 }, { yPercent: 0, autoAlpha: 1, duration: d || 0.4, ease: E.out, stagger: st }, at);
+    var end = at + st * n + 0.15;
+    r.blks.forEach(function (b) { tl.fromTo(b, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: E.out }, end); });
+    return end;
+  }
+  function strikeAt(r, t) {                          // 划掉：橙线从左拉过去，字变暗
+    r.stks.forEach(function (s) {
+      tl.fromTo(s.ln, { scaleX: 0 }, { scaleX: 1, duration: 0.3, ease: E.out }, t);
+      tl.fromTo(s.w.querySelectorAll('.ch'), { opacity: 1 }, { opacity: 0.45, duration: 0.3, immediateRender: false }, t);
+    });
+  }
+  var kin = document.getElementById('kin');
+  function wipeBars(ov, a, e) {                      // 整屏橙色色块：a 时从左扫进再向右扫开露出字卡，e 时再扫一遍退场
+    var seg = function (o, t, from, to, ease) {
+      var b = mk('div', 'k-bar', ov); origin(b, o); gsap.set(b, { autoAlpha: 0 });
+      tl.set(b, { autoAlpha: 1 }, t);
+      tl.fromTo(b, { scaleX: from }, { scaleX: to, duration: 0.22, ease: ease, immediateRender: false }, t);
+      tl.set(b, { autoAlpha: 0 }, t + 0.22);
+    };
+    seg('0% 50%', a, 0, 1, 'power2.in'); seg('100% 50%', a + 0.22, 1, 0, 'power3.out');
+    seg('100% 50%', e, 0, 1, 'power2.in'); seg('0% 50%', e + 0.22, 1, 0, 'power3.out');
+  }
+  function popCard(p, a, e) {                        // 整屏字卡：盖住画面讲一句核心话（章节开头、关键判断）
+    var ov = mk('div', 'k-ov', kin); gsap.set(ov, { autoAlpha: 0 }); show(ov, a, e + 0.44);
+    var body = mk('div', 'k-body', ov); gsap.set(body, { autoAlpha: 0 }); show(body, a + 0.22, e + 0.22);
+    var card = mk('div', 'k-card', body);
+    if (p.num) {                                     // 和脸旁大字的序号同一套：遮罩里从下面翻上来
+      var n = mk('div', 'k-num', mk('div', 'k-numwrap', card), p.num); n.style.fontSize = '240px';
+      tl.fromTo(n, { yPercent: 100 }, { yPercent: 0, duration: 0.5, ease: E.out }, a + 0.24);
+    }
+    if (p.kicker) fadeUp(mk('div', 'k-kick', card, p.kicker), a + 0.26, 0.3);
+    var tx = mk('div', 'k-text', card); if (p.size) tx.style.fontSize = p.size + 'px';
+    var r = splitInto(tx, p.text, p.hl, p.stk);
+    var done = charsIn(r, a + 0.3);
+    if (r.stks.length) strikeAt(r, p.st != null ? p.st : done + 0.3);
+    wipeBars(ov, a, e);
+  }
+  function popSide(p, a, e, sc) {                    // 脸旁大字：不盖人，逐行先铺深色底条再弹字；num 时先翻出一个大号描边数字
+    var zw = clamp(sc.face.x0 * W - 72 - 96, 420, 900);
+    var box = mk('div', 'k-side', kin); box.style.width = zw + 'px';
+    // 退场只交给末尾那条 autoAlpha 补间，不再叠一个 show 的隐藏 set：autoAlpha 零时长 set 往回 seek 时按 opacity 0 还原成 hidden，
+    // 退场补间只还原 opacity，结果字是不透明的却看不见（确定性检查实测，先跳到片尾再回来那一遍整块字消失）
+    var inner = mk('div', '', box); gsap.set(inner, { autoAlpha: 0 }); show(inner, a);
+    var t = a;
+    if (p.num) {
+      var nw = mk('div', 'k-numwrap', inner), n = mk('div', 'k-num', nw, p.num);
+      tl.fromTo(n, { yPercent: 100 }, { yPercent: 0, duration: 0.5, ease: E.out }, a); t += 0.2;
+    }
+    if (p.kicker) fadeUp(mk('div', 'k-kick', inner, p.kicker), t, 0.3);
+    var rs = [], lines = p.text.split('\n');
+    var maxc = Math.max.apply(null, lines.map(function (l) { return Array.from(l).length; }));
+    var fs = p.size || Math.min(84, Math.floor((zw - 44) / maxc));   // 字号按最长一行收，整块不越过脸边
+    lines.forEach(function (line, k) {
+      var sl = mk('div', 'k-sline', inner); sl.style.fontSize = fs + 'px';
+      var bk = mk('i', 'bk', sl); origin(bk, '0% 50%');
+      tl.fromTo(bk, { scaleX: 0 }, { scaleX: 1, duration: 0.28, ease: E.out }, t + 0.1 * k);
+      var r = splitInto(sl, line, p.hl, p.stk); rs.push(r);
+      charsIn(r, t + 0.12 + 0.1 * k);
+    });
+    rs.forEach(function (r) { if (r.stks.length) strikeAt(r, p.st != null ? p.st : t + 1.1); });
+    tl.fromTo(inner, { y: 0, autoAlpha: 1 }, { y: -28, autoAlpha: 0, duration: 0.3, ease: 'power2.in', immediateRender: false }, e);
+  }
+
+  // ---------- 版式 ----------
+  var talkN = 0;
+  var L = {
+    talk: function (layer, sc, cfg) {
+      carlAt(sc.t0, [0, 0, W, H], sc.face, 'full');
+      var k0 = (talkN++ % 2) ? 1.06 : 1, k1 = k0 + 0.03, fx = sc.face.cx * W, fy = sc.face.cy * H;   // 以脸为中心推：x、y 跟着补，不动 origin
+      tl.fromTo(carl, { x: -fx * (k0 - 1), y: -fy * (k0 - 1), scale: k0 }, { x: -fx * (k1 - 1), y: -fy * (k1 - 1), scale: k1, duration: sc.t1 - sc.t0, ease: 'none', immediateRender: false }, sc.t0);
+      if (!(cfg.kicker || cfg.title || cfg.sub || sc.chips.length)) return;
+      var p = mk('div', 'panel', layer); p.style.left = BOX.talk.x + 'px'; p.style.bottom = BOX.talk.bottom + 'px';
+      p.style.maxWidth = (W - 2 * BOX.talk.x) + 'px';
+      var at = sc.t0 + (cfg.delay || 0.1);
+      tl.fromTo(p, { autoAlpha: 0, x: -30 }, { autoAlpha: 1, x: 0, duration: 0.3, ease: E.out }, at);
+      if (cfg.kicker) mk('div', 'kicker', p, cfg.kicker);
+      if (cfg.title) charsIn(splitInto(mk('div', 'title', p), cfg.title, cfg.hl), at + 0.05);
+      if (cfg.sub) fadeUp(mk('div', 'sub', p, cfg.sub), at + 0.15, 0.3);
+      if (sc.chips.length) chipsRow(p, sc, cfg, 0, 0, null, at);
+    },
+    side: function (layer, sc, cfg) {
+      carlAt(sc.t0, [0, 0, W, H], sc.face, 'full');
+      var zw = clamp(sc.face.x0 * W - BOX.side.faceGap - BOX.side.x, BOX.side.minW, BOX.side.maxW);
+      var box = [BOX.side.x, BOX.side.cy - BOX.side.maxH / 2, zw, BOX.side.maxH];
+      var cs = cards(layer, sc, cfg, box, 'left-mid', { under: true, creditIn: true });
+      if (cfg.kicker) {
+        var k = mk('div', 'tag lab', layer, cfg.kicker); k.style.left = BOX.side.x + 'px';
+        k.style.top = (cs[0].y - 66) + 'px'; fadeUp(k, sc.t0 + 0.1);
+      }
+    },
+    pip: function (layer, sc, cfg) {
+      var B = BOX.pip;
+      carlAt(sc.t0, B.win, sc.face, 'win');
+      var box = cfg.quote ? [B.card[0], B.card[1], B.card[2], B.card[3] - 80] : B.card;
+      var cs = cards(layer, sc, cfg, box, 'left-top');
+      textCol(layer, cfg, B.col[0], B.col[1], B.col[2], sc.t0 + 0.05);
+      var c0 = cs[0], bottom = c0.y + c0.h;
+      if (cfg.quote) quoteLine(layer, sc, cfg, B.card[0], bottom + 24, Math.max(c0.w, 560));   // 引用框和素材卡同宽，不从卡右沿伸出去
+      else chipsRow(layer, sc, cfg, B.card[0], Math.max(B.chipsY, bottom + 32), B.card[2], sc.t0 + 0.3);
+    },
+    split: function (layer, sc, cfg) {
+      var B = BOX.split;
+      carlAt(sc.t0, B.strip, sc.face, 'strip');
+      head(layer, cfg, B.head[0], B.head[1], B.card[2], sc.t0 + 0.1);
+      var cs = cards(layer, sc, cfg, B.card, 'left-top', { under: !!(cfg.kicker || cfg.title) });
+      var bottom = Math.max.apply(null, cs.map(function (c) { return c.y + c.h; })), c0 = cs[0];
+      chipsRow(layer, sc, cfg, B.card[0], bottom + (c0.under ? (c0.stack ? 120 : 72) : B.chipsGap), B.card[2], sc.t0 + 0.3);
+    },
+    full: function (layer, sc, cfg) {
+      carlAt(sc.t0, [0, 0, W, H], sc.face, 'hide');
+      sc.items.forEach(function (it, j) {
+        var md = T.media[it.m] || { w: 16, h: 9 }, ar = md.w / md.h, cover = !cfg.card && Math.abs(ar - 16 / 9) < 0.12, c = cfg.items[j] || {};
+        var card = mk('div', 'card', layer), cx, cy, cw, ch;
+        if (cover) { cx = 0; cy = 0; cw = W; ch = H; card.style.outline = 'none'; }
+        else { var sz = fit(md.w, md.h, W * BOX.full.maxW, H - 2 * BOX.full.pad); cw = sz[0]; ch = sz[1]; cx = W - BOX.full.pad - cw; cy = (H - ch) / 2; }
+        px(card, cx, cy, cw, ch);
+        var el = mediaEl(sc, j); card.appendChild(el); zoomMedia(el, it, c);
+        if (c.demo || (M.media[it.m] || {}).demo) mk('div', 'demo', card, '示意');
+        var by = byOf(it, c);
+        if (by) {                                    // 署名：铺满时在安全区内右下角，非铺满时在卡片下沿外
+          var cr = mk('div', 'credit' + (cover ? ' in' : ''), layer, by);
+          if (cover) { cr.style.right = '96px'; cr.style.bottom = '96px'; }
+          else { cr.style.left = cx + 'px'; cr.style.width = cw + 'px'; cr.style.textAlign = 'right'; cr.style.top = (cy + ch + 14) + 'px'; }
+          gsap.set(cr, { autoAlpha: 0 }); show(cr, it.t0, it.t1);
+        }
+        gsap.set(card, { autoAlpha: 0 }); show(card, it.t0, it.t1);
+        if (!cover && j === 0) tl.fromTo(card, { scale: 0.94 }, { scale: 1, duration: 0.5, ease: E.out, immediateRender: false }, it.t0);
+        if (c.label || c.kicker) {
+          var b = mk('div', 'biglabel', layer), quick = it.t1 - it.t0 < 2;
+          if (c.pos === 'top' || c.pos === 'tr') { b.style.bottom = 'auto'; b.style.top = '128px'; }
+          if (c.pos === 'tr') { b.style.left = 'auto'; b.style.right = '96px'; }
+          if (c.kicker) mk('div', 'kicker', b, c.kicker);
+          if (c.label) { var tt = mk('div', 'title', b); var rr = splitInto(tt, c.label); if (!quick) charsIn(rr, it.t0 + 0.08); }
+          if (c.sub) mk('div', 'sub', b, c.sub);
+          gsap.set(b, { autoAlpha: 0 }); show(b, it.t0, it.t1);   // 快切段（不到 2 秒）标签跟素材一起硬切，不做滑入
+        }
+      });
+      if (sc.chips.length) {                         // 全屏版式的词条放在左下素材名上方
+        var row = chipsRow(layer, sc, cfg, 0, 0, null, sc.t0 + 0.3);
+        row.style.top = 'auto'; row.style.left = '96px'; row.style.bottom = '300px';
+      }
+    },
+    grid: function (layer, sc, cfg) {
+      carlAt(sc.t0, [0, 0, W, H], sc.face, 'hide');
+      var cols = cfg.cols || 3, g = BOX.grid.gap, tw = (W - 192 - (cols - 1) * g) / cols, th = Math.round(tw * 9 / 16);
+      var rows = Math.ceil(sc.items.length / cols), hasHead = cfg.title || cfg.kicker;
+      var top = cfg.quote ? Math.max(BOX.grid.quoteTop, 300 + (H - 396 - (rows * (th + g) - g)) / 2) : hasHead ? BOX.grid.top : (H - rows * (th + g) + g) / 2;
+      if (cfg.quote) { var ql = mk('div', 'qline', layer); px(ql, 96, 120, W - 192); if (cfg.qkicker) mk('span', 'kicker', ql, cfg.qkicker);
+        fadeUp(ql, sc.t0, 0.3); typed(ql, '', cfg, cfg.quote, sc.t0 + 0.3, cfg.type || 1.5); }
+      head(layer, cfg, 96, 120, W - 192, sc.t0 + 0.05);   // 120：让开左上角的章节角标
+      var view = mk('div', '', layer); view.style.position = 'absolute'; view.style.overflow = 'hidden';
+      var vTop = hasHead || cfg.quote ? top - 8 : 0, vBot = sc.chips.length ? 150 : 0;
+      px(view, 0, vTop, W, H - vTop - vBot);
+      var wall = mk('div', '', view); wall.style.position = 'absolute'; px(wall, 0, -vTop, W, H);
+      sc.items.forEach(function (it, j) {
+        var card = mk('div', 'card contain', wall), c = j % cols, r = Math.floor(j / cols);
+        px(card, 96 + c * (tw + g), top + r * (th + g), tw, th);
+        card.appendChild(mediaEl(sc, j));
+        tl.fromTo(card, { autoAlpha: 0, scale: 0.92 }, { autoAlpha: 1, scale: 1, duration: 0.4, ease: E.out }, sc.t0 + 0.05 * j);
+      });
+      if (cfg.scroll) tl.fromTo(wall, { y: 0 }, { y: -cfg.scroll, duration: sc.t1 - sc.t0, ease: 'none', immediateRender: false }, sc.t0);
+      else { origin(wall, '50% 50%'); tl.fromTo(wall, { scale: 1 }, { scale: 1.01, duration: sc.t1 - sc.t0, ease: 'none', immediateRender: false }, sc.t0); }
+      if (sc.chips.length) { var row = chipsRow(layer, sc, cfg, 96, 0, W - 192, sc.t0 + 0.3); row.style.top = 'auto'; row.style.bottom = '64px'; }
+    },
+    text: function (layer, sc, cfg) {
+      var B = BOX.pip;
+      carlAt(sc.t0, B.win, sc.face, 'win');
+      var qbox = mk('div', '', layer); px(qbox, B.card[0], B.card[1], B.card[2], B.card[3]); qbox.style.position = 'absolute';
+      qbox.style.display = 'flex'; qbox.style.flexDirection = 'column'; qbox.style.gap = '40px'; qbox.style.justifyContent = 'center';   // 词条紧跟引用框，整块在卡位里居中
+      var q = mk('div', 'quote', qbox);
+      if (Array.from(cfg.quote).length < 40) q.style.fontSize = '46px';   // 短句放大，一行 24 字以内不折行
+      if (cfg.qkicker) mk('span', 'kicker q-k', q, cfg.qkicker);
+      enter(q, sc.t0, { from: { autoAlpha: 0 }, to: { autoAlpha: 1 } });
+      typed(q, '', cfg, cfg.quote, sc.t0 + 0.5, Math.min(cfg.type || 2.5, (sc.t1 - sc.t0 - 0.5) * 0.6));
+      textCol(layer, cfg, B.col[0], B.col[1], B.col[2], sc.t0 + 0.05);
+      var row = chipsRow(qbox, sc, cfg, 0, 0, B.card[2], sc.t0 + 0.3);
+      if (row) row.style.position = 'static';
+    },
+    seek: function (layer, sc, cfg) {                // 时间轴示意：播放头跟着画面走，口播说到第几秒就跳过去，卡片同时换成那一秒的画面
+      var B = BOX.pip, cb = [B.card[0], B.card[1], B.card[2], B.card[3] - 190];
+      carlAt(sc.t0, B.win, sc.face, 'win');
+      var cs = cards(layer, sc, cfg, cb, 'left-top');
+      var c0 = cs[0], bottom = c0.y + c0.h, span = cfg.span || 15, bw = cb[2];
+      var bar = mk('div', 'tl', layer); px(bar, cb[0], bottom + 80, bw);
+      mk('i', 'strip', bar); mk('i', 'rule', bar);
+      for (var s = 0; s <= span; s++) {
+        var tk = mk('i', 'tick', bar); tk.style.left = (s / span * bw) + 'px';
+        if (s % 5 === 0) { var lb = mk('div', 'tlab', bar, s + 's'); lb.style.left = (s / span * bw) + 'px'; }
+      }
+      var hd = mk('i', 'head', bar), rd = mk('div', 'read', bar, 't = 0.0 s');
+      fadeUp(bar, sc.t0 + 0.2);
+      var pos = function (v) { return v / span * bw; }, rx = function (v) { return clamp(pos(v) - 90, 0, bw - 200); };
+      var marks = sc.marks || [], t = sc.t0 + 0.4, v = 0;
+      var fmt = function (x) { return 't = ' + parseFloat(x).toFixed(1) + ' s'; };
+      var go = function (v0, v1, at, d, ease) {     // 播放头和读数一起走；读数用 innerText 补间加格式化，seek 时也会渲染
+        tl.fromTo(hd, { x: pos(v0) }, { x: pos(v1), duration: d, ease: ease, immediateRender: false }, at);
+        tl.fromTo(rd, { x: rx(v0) }, { x: rx(v1), duration: d, ease: ease, immediateRender: false }, at);
+        tl.fromTo(rd, { innerText: v0 }, { innerText: v1, duration: d, ease: ease, immediateRender: false, modifiers: { innerText: fmt } }, at);
+      };
+      if (marks.length && marks[0].t != null && marks[0].t - t > 0.5) {   // 第一段：画面在播，播放头跟着走
+        var run = Math.min(marks[0].t - t, span * 0.6); go(0, run, t, marks[0].t - t, 'none'); v = run;
+      }
+      marks.forEach(function (mk_, j) {
+        var at = mk_.t != null ? mk_.t : sc.t0 + 1 + j; go(v, mk_.v, at, 0.4, E.io); v = mk_.v;
+      });
+      textCol(layer, cfg, B.col[0], B.col[1], B.col[2], sc.t0 + 0.05);
+      chipsRow(layer, sc, cfg, cb[0], bottom + 80 + 128 + 24, cb[2], sc.t0 + 0.3);
+    },
+    beats: function (layer, sc, cfg) {              // 拍点示意：时间轴上等距的拍，口播说到哪件事，那一拍亮起并挂上事件名
+      var B = BOX.pip, cb = [B.card[0], B.card[1], B.card[2], B.card[3] - 190];
+      carlAt(sc.t0, B.win, sc.face, 'win');
+      var cs = cards(layer, sc, cfg, cb, 'left-top');
+      var bottom = Math.max.apply(null, cs.map(function (c) { return c.y + c.h; }));
+      var bar = mk('div', 'tl', layer); px(bar, cb[0], bottom + 96, cb[2]);
+      mk('i', 'strip', bar); mk('i', 'rule', bar);
+      var n = cfg.beats || 8, ticks = [];
+      for (var b = 0; b < n; b++) {
+        var tk = mk('i', 'tick', bar); tk.style.left = ((b + 0.5) / n * cb[2]) + 'px'; ticks.push(tk);
+        var lb = mk('div', 'tlab', bar, '拍 ' + (b + 1)); lb.style.left = ((b + 0.5) / n * cb[2]) + 'px';
+      }
+      if (cfg.demo) mk('div', 'demo', bar, '示意');
+      fadeUp(bar, sc.t0 + 0.2);
+      (sc.events || []).forEach(function (ev, j) {
+        var c = cfg.events[j], at = ev.t != null ? ev.t : sc.t0 + 1 + j;
+        if (c.beat == null) {                         // 没指定拍：所有拍依次亮一遍（列出拍点）
+          ticks.forEach(function (tk, k) { tl.set(tk, { backgroundColor: TH.accent, opacity: 1, width: 4, marginLeft: -2 }, at + k * 0.12); }); return;
+        }
+        var e = mk('div', 'ev', bar, c.text); e.style.left = ((c.beat + 0.5) / n * cb[2]) + 'px';
+        tl.fromTo(e, { autoAlpha: 0, y: 14 }, { autoAlpha: 1, y: 0, duration: 0.3, ease: E.out, immediateRender: true }, at);
+      });
+      textCol(layer, cfg, B.col[0], B.col[1], B.col[2], sc.t0 + 0.05);
+    },
+  };
+
+  // ---------- 组装 ----------
+  var host = document.getElementById('scenes');
+  var cfgById = {}; M.scenes.forEach(function (s) { cfgById[s.id] = s; });
+  T.scenes.forEach(function (sc, i) {
+    var cfg = cfgById[sc.id]; cfg.items = cfg.items || []; cfg.chips = cfg.chips || [];
+    var layer = mk('div', 'scene', host); layer.id = 'scene-' + sc.id;
+    gsap.set(layer, { autoAlpha: 0 }); show(layer, sc.t0, sc.t1);
+    L[cfg.layout](layer, sc, cfg);
+    var bgOn = !(cfg.layout === 'talk' || cfg.layout === 'side');
+    tl.set('#bg', { autoAlpha: bgOn ? 1 : 0 }, sc.t0);
+    tl.set('#chrome', { autoAlpha: cfg.noTag ? 0 : 1 }, sc.t0);   // noTag：素材自带角标或片尾标题卡时，章节角标让开
+  });
+  // 章节角标：每段换一次，真人和图形段都挂着
+  var chrome = document.getElementById('chrome');
+  T.parts.forEach(function (p, i) {
+    var tg = mk('div', 'tag', chrome, p.tag); gsap.set(tg, { autoAlpha: 0 });
+    show(tg, p.t0, i + 1 < T.parts.length ? T.parts[i + 1].t0 : null);
+    if (i > 0) tl.fromTo(tg, { x: -24 }, { x: 0, duration: 0.4, ease: E.out, immediateRender: false }, p.t0);
+  });
+  // 概念文字动画：场景里的 pops 按口播锚点出现，默认持续到下一个 pop 或场景结束
+  // 整屏字卡落在切点上时提前一个色块扫入的时长：色块先盖住上一场，切点那一帧正好盖满，新场景不会先闪 6 到 8 帧再被盖住
+  var WIPE = 0.22;
+  T.scenes.forEach(function (sc) {
+    (sc.pops || []).forEach(function (p, j) {
+      var a = p.t != null ? p.t : sc.t0 + 0.15, nx = sc.pops[j + 1];
+      if (p.style === 'card' && a - sc.t0 < 0.3) a = Math.max(0, sc.t0 - WIPE);
+      // 退场同理：离场景结尾不到 1.3 秒就把退场挪到切点上，色块盖满的那一帧正好换场，揭开的是下一场，不露回上一场的半秒尾巴
+      var snapOut = p.style === 'card' && sc.t1 < T.duration - 1;
+      var e = p.dur ? a + p.dur : (nx && nx.t != null ? nx.t - 0.35 : sc.t1 - 0.35);
+      if (snapOut && !nx && sc.t1 - e < 1.3) e = sc.t1 - WIPE;
+      e = Math.min(e, T.duration - 0.6);
+      if (p.style === 'card') popCard(p, a, e); else popSide(p, a, e, sc);
+    });
+  });
+  // 每个 PART 开头：整屏色块扫过，亮一下编号和章节名
+  T.parts.forEach(function (p) {
+    var m = /^(PART \d+)\s*·\s*(.+)$/.exec(p.tag);
+    if (m && !M.brand.noPartWipe) popCard({ kicker: m[1], text: m[2], size: 128 }, p.t0 - WIPE, p.t0 + 0.95);
+  });
+  tl.set({}, {}, T.duration);                        // 时间线拉满到片尾
+
+  window.__timelines = window.__timelines || {};
+  window.__timelines['main'] = tl;
+  window.__duration = T.duration;
+})();
+</script>
+</body>
+</html>

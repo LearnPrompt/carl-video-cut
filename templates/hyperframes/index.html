@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=1080">
+<title>HyperFrames 模板</title>
+<link rel="icon" href="data:,">
+<style>
+  /* 设计规范：单强调色 / 0px 圆角 / 1px 边框 / Swiss grid / 无渐变。颜色与字体全部来自 MOTION.theme（见脚本里 setProperty）。 */
+  * { box-sizing: border-box; margin: 0; padding: 0; border-radius: 0; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+  body { font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; }
+  #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+
+  #grid i { position: absolute; top: 0; width: 1px; height: 1080px; background: var(--ink); opacity: .06; }
+  .rule { position: absolute; left: 120px; width: 1680px; height: 1px; background: var(--ink); }
+  #progress { position: absolute; left: 120px; top: 983px; width: 1680px; height: 3px; background: var(--accent); transform-origin: 0 50%; }
+
+  .clip { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+  .stage, .fx { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+  .meta { position: absolute; top: 56px; font: 500 20px/1 var(--mono); letter-spacing: .12em; }
+  .meta.l { left: 120px; } .meta.r { right: 120px; }
+
+  .col { position: absolute; display: flex; flex-direction: column; }
+  .kicker { display: flex; align-items: center; gap: 16px; font: 600 24px/1 var(--mono); letter-spacing: .14em; color: var(--accent); }
+  .kicker::before { content: ""; width: 16px; height: 16px; background: var(--accent); }
+  .mask { display: block; overflow: hidden; padding: .04em 0; margin: -.04em 0; }
+  .mask-in { display: block; }
+
+  /* 标题卡 */
+  .t-col { left: 120px; top: 190px; width: 1680px; gap: 44px; }
+  .t-title { font: 700 236px/1.02 var(--font); letter-spacing: -.02em; }
+  .t-sub { width: 760px; padding-top: 24px; border-top: 1px solid var(--ink); font: 400 40px/1.4 var(--font); }
+
+  /* 数字对比 */
+  .c-col { left: 120px; top: 190px; width: 1680px; gap: 36px; }
+  .c-title { font: 700 96px/1.1 var(--font); letter-spacing: -.01em; }
+  .c-new { position: absolute; left: 120px; top: 470px; width: 1000px; }
+  .lab { font: 500 22px/1 var(--mono); letter-spacing: .14em; opacity: .62; }
+  .c-big { margin-top: 24px; font: 700 320px/1 var(--mono); letter-spacing: -.04em; color: var(--accent); white-space: nowrap; }
+  .c-big .u { font-size: 120px; letter-spacing: 0; margin-left: 12px; }
+  .c-row { position: absolute; left: 1180px; width: 620px; height: 200px; border-top: 1px solid var(--ink); padding-top: 22px; }
+  .c-row .v { position: relative; display: inline-block; margin-top: 18px; font: 700 120px/1 var(--mono); letter-spacing: -.03em; white-space: nowrap; }
+  .c-row.old .v { opacity: .5; }
+  .c-row.old .strike { position: absolute; left: -8px; right: -8px; top: 52%; height: 4px; background: var(--accent); transform-origin: 0 50%; }
+  .c-row.delta .v { color: var(--accent); }
+
+  /* 截图聚焦 */
+  .f-frame { position: absolute; left: 120px; top: 210px; width: 1080px; overflow: hidden; border: 1px solid var(--ink); background: #fff; }
+  .f-move { position: absolute; left: 0; top: 0; width: 1080px; transform-origin: 0 0; }
+  .f-move img { width: 100%; height: 100%; display: block; }
+  .f-col { left: 1280px; top: 210px; width: 520px; gap: 32px; }
+  .f-title { font: 700 60px/1.2 var(--font); }
+  .f-sub { padding-top: 22px; border-top: 1px solid var(--ink); font: 400 30px/1.6 var(--font); }
+</style>
+</head>
+<body>
+<div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="14">
+  <div id="grid"></div>
+  <div class="rule" style="top:96px"></div>
+  <div class="rule" style="top:984px"></div>
+  <div id="progress"></div>
+
+  <section id="scene-s1" class="clip" data-scene="s1" data-start="0" data-duration="4"></section>
+  <section id="scene-s2" class="clip" data-scene="s2" data-start="4" data-duration="5"></section>
+  <section id="scene-s3" class="clip" data-scene="s3" data-start="9" data-duration="5"></section>
+</div>
+
+<script src="motion.config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+(function () {
+  // 约束：不用 Date.now / performance.now / 无种子 Math.random；时间线全部由 MOTION 推出。
+  var M = window.MOTION, T = M.theme, root = document.getElementById('root');
+  var rs = document.documentElement.style;
+  rs.setProperty('--bg', T.bg); rs.setProperty('--ink', T.ink); rs.setProperty('--accent', T.accent);
+  rs.setProperty('--font', T.font); rs.setProperty('--mono', T.mono);
+
+  function mk(tag, cls, parent, text) {
+    var e = document.createElement(tag); if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    if (parent) parent.appendChild(e); return e;
+  }
+  var pad2 = function (n) { return String(n).padStart(2, '0'); };
+
+  // 12 栏参考线：边距 120，栏宽 118，槽 24
+  var grid = document.getElementById('grid');
+  for (var k = 0; k <= 12; k++) { var g = mk('i', '', grid); g.style.left = (120 + k * 142 - (k === 12 ? 24 : 0)) + 'px'; }
+
+  var total = M.scenes.reduce(function (a, s) { return a + s.dur; }, 0);
+  var tl = gsap.timeline({ paused: true });
+  tl.fromTo('#progress', { scaleX: 0 }, { scaleX: 1, duration: total, ease: 'none' }, 0);
+
+  var EASE = { out: 'power3.out', io: 'power2.inOut', in: 'power2.in' };
+  var fadeUp = function (el, dur, at) { tl.fromTo(el, { autoAlpha: 0, y: 20 }, { autoAlpha: 1, y: 0, duration: dur, ease: EASE.out }, at); };
+
+  var BUILD = {
+    title: function (sc, fx, c) {
+      var col = mk('div', 'col t-col', fx);
+      var k = mk('div', 'kicker', col, sc.text.kicker);
+      var h = mk('div', 't-title', col);
+      var lines = String(sc.text.title).split('\n').map(function (t) { return mk('span', 'mask-in', mk('span', 'mask', h), t); });
+      var sub = mk('div', 't-sub', col, sc.text.sub);
+      fadeUp(k, c.pd * 0.6, c.tIn);
+      tl.fromTo(lines, { yPercent: 110 }, { yPercent: 0, duration: c.pd * 0.9, stagger: c.pd * 0.15, ease: EASE.out }, c.tIn + c.pd * 0.1);
+      fadeUp(sub, c.pd * 0.6, c.tIn + c.pd * 0.5);
+    },
+
+    compare: function (sc, fx, c) {
+      var n = M.numbers[sc.number], dp = n.decimals == null ? 1 : n.decimals;
+      var fmt = function (v) { return v.toFixed(dp); };
+      var pct = Math.round((1 - n['new'] / n.old) * 100);
+      var col = mk('div', 'col c-col', fx);
+      var k = mk('div', 'kicker', col, sc.text.kicker);
+      var h = mk('div', 'c-title', col, sc.text.title);
+
+      var nb = mk('div', 'c-new', fx);
+      mk('div', 'lab', nb, sc.text.newLabel);
+      var big = mk('div', 'c-big', nb);
+      var num = mk('span', 'n', big, fmt(n.old)); mk('span', 'u', big, n.unit);
+
+      var r1 = mk('div', 'c-row old', fx); r1.style.top = '470px';
+      mk('div', 'lab', r1, sc.text.oldLabel);
+      var v1 = mk('div', 'v', r1, fmt(n.old) + n.unit); var strike = mk('i', 'strike', v1);
+      var r2 = mk('div', 'c-row delta', fx); r2.style.top = '700px';
+      mk('div', 'lab', r2, sc.text.deltaLabel);
+      mk('div', 'v', r2, (pct >= 0 ? '−' : '+') + Math.abs(pct) + '%');
+
+      fadeUp(k, c.pd * 0.6, c.tIn);
+      fadeUp(h, c.pd * 0.8, c.tIn + c.pd * 0.15);
+      fadeUp(nb, c.pd * 0.8, c.tIn + c.pd * 0.3);
+      fadeUp(r1, c.pd * 0.8, c.tIn + c.pd * 0.5);
+
+      // 数字滚动：入场后开始，在 hold 段内收束
+      var rollAt = c.tIn + c.pd * 0.6, rollDur = (c.tHold - rollAt) + 0.35 * (c.tOut - c.tHold);
+      // 直接补间 DOM 的 innerText，用 modifiers 格式化：seek 时也会渲染，不依赖 onUpdate 回调（渲染器 seek 可能抑制回调）
+      tl.fromTo(num, { innerText: n.old }, { innerText: n['new'], duration: rollDur, ease: EASE.io,
+        modifiers: { innerText: function (v) { return fmt(parseFloat(v)); } } }, rollAt);
+      tl.fromTo(strike, { scaleX: 0 }, { scaleX: 1, duration: 0.3 * rollDur, ease: EASE.out }, rollAt + rollDur * 0.7);
+      fadeUp(r2, c.pd * 0.8, rollAt + rollDur * 0.85);
+    },
+
+    focus: function (sc, fx, c) {
+      // 推镜：用 transform 把 zoom 区域放大到框宽 90% 并居中（left/top 动画会被 lint 判为逐帧抖动）
+      var a = M.assets[sc.asset], z = a.zoom, W = 1080, H = Math.round(W * a.h / a.w);
+      var fr = mk('div', 'f-frame', fx); fr.style.height = H + 'px';
+      var mv = mk('div', 'f-move', fr); mv.style.height = H + 'px';
+      var img = mk('img', '', mv); img.src = a.src;
+      var col = mk('div', 'col f-col', fx);
+      var k = mk('div', 'kicker', col, sc.text.kicker);
+      var h = mk('div', 'f-title', col, sc.text.title);
+      var sub = mk('div', 'f-sub', col, sc.text.sub);
+      tl.fromTo(fr, { autoAlpha: 0, y: 24 }, { autoAlpha: 1, y: 0, duration: c.pd * 0.8, ease: EASE.out }, c.tIn);
+      fadeUp(k, c.pd * 0.6, c.tIn + c.pd * 0.3);
+      fadeUp(h, c.pd * 0.7, c.tIn + c.pd * 0.45);
+      fadeUp(sub, c.pd * 0.7, c.tIn + c.pd * 0.7);
+      var s = 0.9 / Math.max(z.w, z.h);
+      var tx = (0.5 - (z.x + z.w / 2) * s) * W, ty = (0.5 - (z.y + z.h / 2) * s) * H;
+      tl.fromTo(mv, { scale: 1, x: 0, y: 0 }, { scale: s, x: tx, y: ty, duration: 0.45 * (c.tOut - c.tHold), ease: EASE.io },
+        c.tHold + 0.1 * (c.tOut - c.tHold));
+    },
+  };
+
+  var acc = 0;
+  M.scenes.forEach(function (sc, i) {
+    var s = acc, d = sc.dur, b = sc.beats;
+    var c = { tIn: s + b['in'] * d, tHold: s + b.hold * d, tOut: s + b.out * d, end: s + d };
+    c.pd = Math.max(0.05, c.tHold - c.tIn);
+    var clip = root.querySelector('[data-scene="' + sc.id + '"]');
+    var stage = mk('div', 'stage', clip);               // 动画作用在 .clip 的子节点上，不动 .clip 本身
+    mk('div', 'meta l', stage, M.meta.title);
+    mk('div', 'meta r', stage, pad2(i + 1) + ' / ' + pad2(M.scenes.length));
+    var fx = mk('div', 'fx', stage);
+    BUILD[sc.type](sc, fx, c);
+    tl.fromTo(fx, { autoAlpha: 1, y: 0 }, { autoAlpha: 0, y: -24, duration: Math.max(0.05, c.end - c.tOut), ease: EASE['in'] }, c.tOut);
+    // 场景显隐：首场默认可见；其余场在开始前 1ms 内显现，结束时隐藏（最后一场不隐藏）
+    if (s > 0) tl.fromTo(stage, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.001 }, s - 0.001);
+    if (i < M.scenes.length - 1) tl.to(stage, { autoAlpha: 0, duration: 0.001 }, c.end);
+    acc += d;
+  });
+
+  window.__timelines = window.__timelines || {};
+  window.__timelines['main'] = tl;
+  window.__duration = total;
+})();
+</script>
+</body>
+</html>

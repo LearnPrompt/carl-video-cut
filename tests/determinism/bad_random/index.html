@@ -1,0 +1,9 @@
+<!doctype html><meta charset="utf-8"><title>反例：无种子随机数</title>
+<style>html,body{margin:0;width:1920px;height:1080px;background:#F3EDE2}#b{position:absolute;width:200px;height:200px;background:#C4482A}</style>
+<div id="b"></div>
+<script>
+// 反例：每次加载随机数不同，同一个 t 两次加载画面不一样
+window.MOTION_TOTAL = 4;
+var jitter = Math.random() * 300;
+window.__render = function (t) { document.getElementById('b').style.transform = 'translate(' + (200 + t * 300 + jitter) + 'px, 400px)'; };
+</script>

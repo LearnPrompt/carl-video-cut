@@ -1,0 +1,9 @@
+<!doctype html><meta charset="utf-8"><title>反例：CSS 动画</title>
+<style>html,body{margin:0;width:1920px;height:1080px;background:#F3EDE2}#b{position:absolute;left:200px;top:400px;width:200px;height:200px;background:#C4482A;animation:spin 1.3s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}</style>
+<div id="b"></div>
+<script>
+// 反例：CSS 动画走墙上时钟，不归 t 管
+window.MOTION_TOTAL = 4;
+window.__render = function (t) {};
+</script>

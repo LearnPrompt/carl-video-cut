@@ -1,0 +1,9 @@
+<!doctype html><meta charset="utf-8"><title>反例：依赖上一帧</title>
+<style>html,body{margin:0;width:1920px;height:1080px;background:#F3EDE2}#b{position:absolute;width:200px;height:200px;background:#C4482A}</style>
+<div id="b"></div>
+<script>
+// 反例：位置按上一帧累加，seek 的路径不同结果就不同
+window.MOTION_TOTAL = 4;
+var x = 200, last = 0;
+window.__render = function (t) { x += (t - last) * 300 + (t < last ? 50 : 0); last = t; document.getElementById('b').style.transform = 'translate(' + x + 'px, 400px)'; };
+</script>
