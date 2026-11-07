@@ -43,6 +43,14 @@ python3 tests/koubo_fixture/check_p2.py --truth $F/src/truth.json --timings $F/p
 bash tests/koubo_fixture/run_all.sh $F
 ```
 
+## 人像覆盖
+
+`tests/presence/check_presence.mjs` 先用合成分镜直接测 `scripts/lib/presence.mjs`：8 场全屏首尾相接要报一条连续不见真人、改成 pip 不报、20 秒上限的边界、宫格并入不见段、脸旁大字在 pip、side、split、seek、beats、text 里要报而在 talk 和 full 加 card 里不报；再造一个最小口播工程（ffmpeg 合成的占位画面、三句的 cutmap）跑 `koubo_motion.mjs`，全屏 25 秒那版 timing.txt 要写出警告，改成 pip 后要无警告。不联网，只要 node 和 ffmpeg。
+
+```bash
+node tests/presence/check_presence.mjs
+```
+
 ## 0.2.1 实跑（2026-11-07，macOS，Chrome 正式版，Node 25.6）
 
 - Chrome 启动与中途故障：`check_launch.mjs` 8 项全 PASS。假 Chrome 马上退出 0.3s、不给调试地址 10.1s、连上后退出 0.2s、连上后不回 5.3s（`CVC_CDP_TIMEOUT=3`），都是退出码 2，假进程和 profile 都回收了；真 Chrome 正常路径通过，页面死循环 4.1s 报错且没有留下 Chrome 进程；外层 `sandbox-exec` 里 1.9s 报 `Chrome 退出（SIGTRAP）`，输出里有 `sandbox initialization failed: Operation not permitted`；同一外层沙箱里显式 `CVC_CHROME_FLAGS=--no-sandbox` 通过。修之前，连上后退出、连上后不回、外层沙箱三种都一直等到被外部超时杀掉，不给调试地址那种报错后留下 Chrome 进程。

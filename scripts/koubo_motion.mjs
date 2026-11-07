@@ -11,10 +11,12 @@
 // 场景结束 = 下一场开始；最后一场结束 = 成片结束 + meta.tail。素材条目没写 at 时，在场内平分。
 // 输出：timing.js（window.MOTION_T，场景和条目的成片秒数、每场人脸框）、assets/（统一成 30fps、bt709、无声，按需循环）、index.html。
 // 找不到的锚点会打印出来并退回平分，不会静默猜。
+// 同时按版式算人像覆盖（出镜比例、最长连续不见真人、脸旁大字压素材），写进 timing.txt；上限 meta.maxAbsent 秒，默认 20。
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { execFileSync } from 'node:child_process';
+import { presence, presenceText } from './lib/presence.mjs';
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => { const i = argv.indexOf('--' + k); return i >= 0 ? argv[i + 1] : d; };
@@ -192,6 +194,11 @@ fs.writeFileSync(path.join(DIR, 'index.html'), html);
 
 const rows = out.scenes.map(s => `${s.id.padEnd(5)} ${fmt(s.t0)}–${fmt(s.t1)} ${(s.t1 - s.t0).toFixed(1).padStart(5)}s  ${(M.scenes.find(x => x.id === s.id).layout).padEnd(6)} ${s.items.map(i => i.m).join(',')}`);
 function fmt(t) { return `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`; }
-fs.writeFileSync(path.join(DIR, 'timing.txt'), rows.join('\n') + '\n\n锚点问题：\n' + (misses.join('\n') || '无') + '\n');
-console.log(JSON.stringify({ scenes: out.scenes.length, videos: tags.length, duration: total, misses: misses.length }));
+const pres = presence(out.scenes.map(s => { const c = M.scenes.find(x => x.id === s.id);
+  return { id: s.id, t0: s.t0, t1: s.t1, layout: c.layout, card: !!c.card, pops: c.pops }; }), { maxAbsent: M.meta.maxAbsent ?? 20 });
+fs.writeFileSync(path.join(DIR, 'timing.txt'), rows.join('\n') + '\n\n锚点问题：\n' + (misses.join('\n') || '无') +
+  '\n\n人像覆盖：\n' + presenceText(pres) + '\n');
+console.log(JSON.stringify({ scenes: out.scenes.length, videos: tags.length, duration: total, misses: misses.length,
+  presence: Math.round(pres.ratio * 1000) / 10, presenceWarnings: pres.warnings.length }));
 if (misses.length) console.log(misses.join('\n'));
+if (pres.warnings.length) console.log(pres.warnings.join('\n'));
