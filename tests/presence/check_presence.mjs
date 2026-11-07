@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 人像覆盖回归：先拿合成分镜直接测 scripts/lib/presence.mjs，再造一个最小口播工程跑 koubo_motion.mjs，看 timing.txt 里的人像覆盖。
 //   node tests/presence/check_presence.mjs
-// 全部通过打印 PRESENCE TESTS PASS、退出码 0；任何一条不对打印 FAIL 那条、退出码 1。不联网，只要 node 和 ffmpeg。
+// 全部通过打印 PRESENCE TESTS PASS、退出码 0；任何一条不对打印 FAIL 那条、退出码 1。不联网，只要 node 和 ffmpeg（含 ffprobe）。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -72,7 +72,8 @@ try {
     r.txt.split('人像覆盖：\n')[1]?.split('\n')[0]);
   r = run('pip');
   ok(/人像覆盖：\n出镜 100%.*最长连续不见 0 秒\n无警告/.test(r.txt) && r.json.presenceWarnings === 0 && r.json.presence === 100, '工程：改 pip 后无警告');
-} finally { fs.rmSync(F, { recursive: true, force: true }); }
+} catch (e) { ok(false, '工程端到端没跑完', String(e.message).split('\n')[0]); }
+finally { fs.rmSync(F, { recursive: true, force: true }); }
 
 console.log(bad ? `PRESENCE TESTS FAIL ${bad}` : 'PRESENCE TESTS PASS');
 process.exit(bad ? 1 : 0);
