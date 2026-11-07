@@ -15,6 +15,16 @@ cp -R templates/hyperframes $F/tpl; node scripts/check_determinism.mjs --dir $F/
 
 `tests/cdp/check_launch.mjs` 用假 Chrome（`tests/cdp/fake_chrome.mjs`）跑四种故障：马上退出、不给调试地址、连上后退出、连上后不回。每种都必须在时限内报 `DETERMINISM ERROR`、退出码 2，假 Chrome 和临时 profile 都要回收。之后用真 Chrome 跑正常路径，再跑一个 1 秒后死循环的页面（拿到页面之后才超时，进程退出时也必须把 Chrome 带走）；macOS 上再套一层 `sandbox-exec` 外层沙箱，要求要么通过、要么 30 秒内报错，最后在外层沙箱里显式设 `CVC_CHROME_FLAGS=--no-sandbox` 必须通过。`--no-real` 只跑假 Chrome。被测进程的 `TMPDIR` 指到测试自己的临时目录，回收检查不受机器上别的 Chrome 影响。
 
+profile 清理另有一组故障注入，都要求不留进程、不留目录，或者明确报错：
+
+- 假 Chrome 带一个同 `--user-data-dir` 的子进程（像 Chrome Helper），主进程退出后还往 profile 里写 0.8 秒、或一直写不退；
+- 同上一直写不退，旁边再起一个独立进程占着前缀相同的 profile（`<这次的 profile>-decoy`），清理完它必须还活着、目录完整；
+- profile 里有个目录暂时只读（0.5 秒后由不相关的进程改回来），要靠重试删掉；
+- 一直只读，必须报 `临时 profile 清理失败：<路径>（原因）`，原故障的报错也要保留；
+- PATH 里的 `pgrep` 总是出错，不能当作没有进程，同样要报清理失败；
+- 真 Chrome 外面包一层带晚写子进程的壳，跑正常路径和页面死循环（后者走进程退出钩子）；
+- 真 Chrome 正常路径，但 profile 一直删不掉：逐像素检查本身通过也不能报 PASS，要退出码 2 写明路径。
+
 ```bash
 node tests/cdp/check_launch.mjs
 ```
@@ -50,6 +60,14 @@ bash tests/koubo_fixture/run_all.sh $F
 ```bash
 node tests/presence/check_presence.mjs
 ```
+
+## 0.2.2 实跑（2026-11-07，macOS，Chrome 正式版，Node 25.6）
+
+- 起因：0.2.1 发布后一轮实跑里 `真：正常路径` 退出码 0、检查 PASS，但留下了临时 profile。之后约 220 次插桩诊断没再出现，原始那次的具体时序没有查明。可以确定的是旧的清理有几处会静默留下：主进程退出后不管还活着的 Helper、删目录失败被吞掉、强杀后不等进程真的退出。
+- 同一份测试在 0.2.1 的 `cdp.mjs` 上跑了两遍，新增的 9 项两遍都 FAIL：子进程晚写和不退留下进程；删除暂时失败留下目录；删除一直失败、列不出进程时没有报错；真 Chrome 正常路径加晚写退出码 0、PASS，却留下两个 profile 和一个进程；正常路径删不掉时也报 PASS。原有 8 项第二遍全 PASS；第一遍里没加任何注入的页面死循环、外层沙箱两项也各留下了 Chrome 进程（2 个和 1 个）。
+- 修后同一份测试 17 项全 PASS，连跑三遍。子进程晚写或不退 2.2 到 2.7s 收回，旁边独立 profile 的进程活着、目录完整。暂时只读 0.8 到 1.1s 删掉，一直只读 2.3 到 2.6s 报清理失败。真 Chrome 正常路径删不掉时 3.6 到 3.9s 以退出码 2 结束并写明路径。外层 `sandbox-exec` 两项仍按原要求通过：macOS 的 `ps` 是 setuid，在沙箱里起不来，所以列进程用 `pgrep`。
+- 确定性：bad_css、bad_random、bad_state FAIL 3/3、退出码 1；hyperframes、selfrender 模板 PASS、退出码 0，跑完没有留下 profile。
+- 人像覆盖：`check_presence.mjs` 19 项全 PASS（#2 合入的改动）。口播全链路这次没重跑。
 
 ## 0.2.1 实跑（2026-11-07，macOS，Chrome 正式版，Node 25.6）
 

@@ -13,11 +13,14 @@
 //   seatbelt）里跑时 Chrome 自带沙箱起不来，确认外层已经隔离、页面是自己的工程后设 CVC_CHROME_FLAGS=--no-sandbox。
 //   这会关掉 Chrome 自己的沙箱，别的场合不要用。
 // - 有界等待：Chrome 10 秒内没给出调试地址、中途退出、调试连接断开、调用超时，都立刻报错，并且只回收这次启动的 Chrome。
+// - 回收：关页面、出错、进程退出时，只碰命令行带这次临时 profile 的进程（这次启动的 Chrome 和它的 Helper），
+//   等它们自己退出最多 2 秒，过时强杀并确认 2 秒内真的没了；再删 profile，失败每 0.1 秒重试最多 2 秒。
+//   列不出进程、强杀后还在、删不掉，都报「临时 profile 清理失败」并写明路径和原因，不静默留下。
 // - 关掉 LCD 子像素文字：灰度抗锯齿跟合成层无关，hyperframes 模板由此做到逐像素一致。
 import http from 'node:http';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, mkdtemp } from 'node:fs/promises';
 import { existsSync, rmSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { join, extname, resolve, sep } from 'node:path';
 import os from 'node:os';
 
@@ -45,10 +48,41 @@ export function serve(root) {
   return { server, port: () => server.address().port };
 }
 
-const START_MS = 10000, CALL_MS = 1000 * (+process.env.CVC_CDP_TIMEOUT || 60);
+const START_MS = 10000, CALL_MS = 1000 * (+process.env.CVC_CDP_TIMEOUT || 60), REAP_MS = 2000;
 // 调用方拿到页面后出错直接 process.exit 时，也把自己启动、还没关的 Chrome 带走
 const live = new Set();
-process.on('exit', () => { for (const r of live) { r.proc.kill('SIGKILL'); rmSync(r.prof, { recursive: true, force: true }); } });
+process.on('exit', () => { for (const r of live) { r.proc.kill('SIGKILL'); try { reap(r.prof); } catch (e) { console.error(e.message); } } });
+
+// 这次启动的 Chrome 的所有进程：命令行带 --user-data-dir=<这次的临时 profile>（前后以空格为界，别的 profile 不会被前缀命中）。
+// 主进程退出后 Helper 还可能活着往 profile 里写。用 pgrep 不用 ps：macOS 的 ps 是 setuid，外层 seatbelt 沙箱里起不来。
+// pgrep 退出码 1 是没有匹配，其余非 0（或超时、起不来）都算列不出
+function ours(prof) {
+  const re = `(^| )--user-data-dir=${prof.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}( |$)`;
+  const r = spawnSync('pgrep', ['-f', '--', re], { encoding: 'utf8', timeout: 5000 });
+  if (r.error || (r.status !== 0 && r.status !== 1)) throw new Error(`pgrep 列不出进程：${r.error?.code || r.error?.message || `退出码 ${r.status}`}`);
+  return r.stdout.split('\n').filter(Boolean).map(Number);
+}
+const nap = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+// 等这些进程退出，最多 REAP_MS，返回还在的 pid
+const settle = prof => { const end = Date.now() + REAP_MS; let pids; while ((pids = ours(prof)).length && Date.now() < end) nap(100); return pids; };
+
+// 同步，进程退出钩子里也能用。清不干净就抛错，带路径和原因
+function reap(prof) {
+  try {
+    let pids = settle(prof);
+    if (pids.length) {
+      for (const pid of pids) try { process.kill(pid, 'SIGKILL'); } catch {}
+      if ((pids = settle(prof)).length) throw new Error(`Chrome 进程 ${pids.join(',')} 强杀后 ${REAP_MS / 1000} 秒还在`);
+    }
+    const end = Date.now() + REAP_MS;
+    for (;;) {
+      let why = '删完又被写回';
+      try { rmSync(prof, { recursive: true, force: true }); if (!existsSync(prof)) return; } catch (e) { why = e.code || e.message; }
+      if (Date.now() >= end) throw new Error(`删不掉：${why}`);
+      nap(100);
+    }
+  } catch (e) { throw new Error(`临时 profile 清理失败：${prof}（${e.message}）`); }
+}
 
 function within(p, ms, what) {
   let t;
@@ -78,15 +112,15 @@ async function launchChrome(chrome, width, height) {
   return run;
 }
 
-// 只回收这次 spawn 的 Chrome：SIGTERM，2 秒不退再 SIGKILL；然后删临时 profile
+// 只回收这次 spawn 的 Chrome：SIGTERM，2 秒不退再 SIGKILL 并再等最多 2 秒；然后 reap
 async function stop(run) {
   const { proc, prof, exited } = run;
   if (proc.pid && proc.exitCode === null && proc.signalCode === null) {
     proc.kill();
-    await within(exited, 2000, 'Chrome 退出').catch(() => proc.kill('SIGKILL'));
+    await within(exited, 2000, 'Chrome 退出').catch(() => { proc.kill('SIGKILL'); return within(exited, 2000, 'Chrome 退出').catch(() => {}); });
   }
-  await rm(prof, { recursive: true, force: true }).catch(() => {});
   live.delete(run);
+  reap(prof);
 }
 
 function connect(wsUrl) {
@@ -122,9 +156,10 @@ export async function openPage({ dir, width = 1920, height = 1080, transparent =
   const st = serve(dir);
   let run, c;
   const close = async () => {
-    if (c) { await within(c.send('Browser.close'), 2000, 'Browser.close').catch(() => {}); c.ws.close(); }
-    if (run) await stop(run);
-    st.server.close();
+    try {
+      if (c) { await within(c.send('Browser.close'), 2000, 'Browser.close').catch(() => {}); c.ws.close(); }
+      if (run) await stop(run);
+    } finally { c?.ws.close(); st.server.close(); }   // 清理失败也关掉连接和静态服务，调用方不会挂住
   };
   try {
     run = await launchChrome(chrome, width, height);
@@ -166,7 +201,8 @@ export async function openPage({ dir, width = 1920, height = 1080, transparent =
       },
     };
   } catch (e) {
-    await close();
-    throw diag(e, chrome, run?.tail);
+    const more = await close().then(() => '', ce => `\n  另外：${ce.message}`);
+    const err = diag(e, chrome, run?.tail); err.message += more;
+    throw err;
   }
 }
